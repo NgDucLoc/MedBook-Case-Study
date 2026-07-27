@@ -6,6 +6,10 @@ const { seed } = require("./src/db/seed");
 const authRoutes = require("./src/routes/auth.routes");
 const doctorRoutes = require("./src/routes/doctors.routes");
 const appointmentRoutes = require("./src/routes/appointments.routes");
+const waitlistRoutes = require("./src/routes/waitlist.routes");
+const offerRoutes = require("./src/routes/offers.routes");
+const notificationRoutes = require("./src/routes/notifications.routes");
+const offerExpiryJob = require("./src/jobs/offerExpiryJob");
 
 const PORT = Number(process.env.PORT || 4300);
 
@@ -26,6 +30,9 @@ app.get("/health", async (req, res, next) => {
 app.use("/api", authRoutes);
 app.use("/api", doctorRoutes);
 app.use("/api", appointmentRoutes);
+app.use("/api", waitlistRoutes);
+app.use("/api", offerRoutes);
+app.use("/api", notificationRoutes);
 
 app.use("/api", (req, res) => {
   res.status(404).json({ error: "Không tìm thấy API" });
@@ -52,6 +59,10 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`MedBook đang chạy tại http://localhost:${PORT}`);
   });
+  // BR-02: job quét offer hết hạn (tắt được bằng OFFER_JOB_DISABLED=1 để test không nhiễu).
+  if (process.env.OFFER_JOB_DISABLED !== "1") {
+    offerExpiryJob.start();
+  }
 }
 
 if (require.main === module) {
