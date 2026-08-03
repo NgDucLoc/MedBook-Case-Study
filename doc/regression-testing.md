@@ -5,14 +5,15 @@ tính năng **đã có sẵn ở nhánh `main`**: demo auth, danh mục bác sĩ
 slot, đặt/hủy/xác nhận lịch hẹn.
 
 Trên `main`, đây là file test **duy nhất** trong `tests/`. Khi bạn implement tính năng
-mới trên một nhánh riêng, tests của tính năng đó nên nằm ở **file riêng** (vd. nhánh
-`day03` có thêm `tests/waitlist.test.js` cho tính năng waitlist) — không viết chung vào
-`regression-core.test.js` và không chỉnh sửa file này.
+mới trên một nhánh riêng, tests của tính năng đó nên nằm ở **file riêng** (vd.
+`tests/ten-tinh-nang.test.js`) — không viết chung vào `regression-core.test.js` và
+không chỉnh sửa file này. File này không được biết/giả định gì về tính năng bạn sắp
+thêm — nó chỉ bảo vệ những gì đã có sẵn ở `main`.
 
 ## Dùng để làm gì
 
-Khi bạn implement thêm một tính năng mới (vd. waitlist, thông báo, thanh toán...) trên
-nền code này, bộ test này giúp trả lời: **"Tôi có lỡ làm hỏng luồng cũ không?"**
+Khi bạn implement thêm một tính năng bổ sung trên nền code này, bộ test này giúp trả
+lời: **"Tôi có lỡ làm hỏng luồng cũ không?"**
 
 Quy trình khuyến nghị:
 
@@ -59,9 +60,9 @@ Tổng kết ở cuối (`tests`, `pass`, `fail`) là con số cần nhìn đầ
 | Xác nhận (staff) | `POST /api/appointments/:id/confirm` | xác nhận lịch `booked` thành công, xác nhận lịch đã confirm/không tồn tại bị từ chối |
 | Hủy lịch | `POST /api/appointments/:id/cancel` | chủ lịch hủy được, **patient khác không được hủy hộ**, staff hủy được lịch của bất kỳ ai, hủy lịch không tồn tại / đã hủy rồi đều bị từ chối, slot quay lại `available` sau khi hủy |
 
-**Không kiểm tra** (cố tình): waitlist, offer, notification, hoặc bất kỳ route/service nào
-được thêm sau `main` — đó là việc của bộ test riêng cho tính năng mới, không thuộc bộ
-regression này.
+**Không kiểm tra** (cố tình): bất kỳ route/service/bảng nào được thêm sau `main` — dù đó
+là tính năng gì. Đó là việc của bộ test riêng cho tính năng mới, không thuộc bộ regression
+này.
 
 ## Vì sao cần bộ test này (bối cảnh)
 
