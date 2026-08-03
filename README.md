@@ -180,7 +180,9 @@ Nguyên tắc: mỗi tầng chỉ gọi tầng ngay dưới nó, không nhảy c
 │   ├── index.html
 │   ├── styles.css
 │   └── js/                    state, api, ui (time rail), main, views/
-├── tests/api.test.js          14 test tích hợp
+├── tests/
+│   ├── api.test.js             14 test tích hợp
+│   └── regression-core.test.js 35 test regression — bảo vệ tính năng cũ khi thêm tính năng mới
 ├── doc/                       Tài liệu kỹ thuật (xem cuối README)
 └── docker-compose.yml
 ```
@@ -288,11 +290,13 @@ Các biến môi trường (xem `.env.example`):
 
 ```bash
 npm run lint                    # ESLint
-npm test                        # 14 test tích hợp — CẦN database đang chạy
+npm test                        # 49 test (14 tích hợp + 35 regression) — CẦN database đang chạy
 npm run db:seed -- --reset      # xóa sạch và nạp lại dữ liệu mẫu
 ```
 
-Test gọi HTTP thật vào Express và query thật vào PostgreSQL — không mock. Mỗi ca test tự reset dữ liệu trước khi chạy nên kết quả ổn định.
+Test gọi HTTP thật vào Express và query thật vào PostgreSQL — không mock. Mỗi ca test tự reset dữ liệu trước khi chạy nên kết quả ổn định. Các file test chạy **tuần tự** (`--test-concurrency=1`) vì cùng dùng chung 1 database và tự reset dữ liệu — chạy song song sẽ deadlock ở bước migrate/reset.
+
+`tests/regression-core.test.js` chỉ test các tính năng đã có ở `main` (auth, doctors, slots, appointments) và được thiết kế để chạy lại **sau khi bạn thêm tính năng mới**, nhằm phát hiện sớm nếu code mới lỡ làm hỏng luồng cũ. Chi tiết phạm vi và lý do: [`doc/regression-testing.md`](./doc/regression-testing.md).
 
 ```bash
 # Cách chạy test nhanh nhất
