@@ -136,6 +136,23 @@ test("demo login succeeds with correct credentials", async () => {
   assert.equal(Object.prototype.hasOwnProperty.call(body.data.user, "demo_password"), false);
 });
 
+test("demo login requires a correct password", async () => {
+  const { response, body } = await request("/api/demo-login", {
+    method: "POST",
+    body: JSON.stringify({ email: "an@medbook.local", password: "sai-mat-khau" }),
+  });
+  assert.equal(response.status, 401);
+  assert.equal(body.error, "Sai email hoặc mật khẩu demo");
+});
+
+test("demo login cannot be bypassed with userId alone", async () => {
+  const { response } = await request("/api/demo-login", {
+    method: "POST",
+    body: JSON.stringify({ userId: 2 }),
+  });
+  assert.equal(response.status, 400);
+});
+
 test("staff is blocked from patient-only booking endpoint", async () => {
   const { response, body } = await request("/api/appointments", {
     method: "POST",
@@ -257,7 +274,98 @@ test("updating a slot with an invalid status is rejected", async () => {
   assert.equal(body.error, "Trạng thái slot không hợp lệ");
 });
 
+test("staff can create a new available slot", async () => {
+  const { response, body } = await request("/api/slots", {
+    method: "POST",
+    headers: headers(STAFF),
+    body: JSON.stringify({
+      doctorId: 2,
+      date: "2099-01-20",
+      startTime: "11:00",
+      endTime: "11:30",
+    }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(body.data.doctorId, 2);
+  assert.equal(body.data.date, "2099-01-20");
+  assert.equal(body.data.startTime, "11:00");
+  assert.equal(body.data.endTime, "11:30");
+  assert.equal(body.data.status, "available");
+});
+
+test("staff can update slot status", async () => {
+  const { response, body } = await request("/api/slots/3", {
+    method: "PUT",
+    headers: headers(STAFF),
+    body: JSON.stringify({ status: "booked" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(body.data.id, 3);
+  assert.equal(body.data.status, "booked");
+});
+
+test("staff cannot reopen a slot that still has an active appointment", async () => {
+  // Slot 2 đang giữ appointment 1 ở trạng thái booked theo seed.
+  const { response, body } = await request("/api/slots/2", {
+    method: "PUT",
+    headers: headers(STAFF),
+    body: JSON.stringify({ status: "available" }),
+  });
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "Không thể mở lại khung giờ đang có lịch hẹn");
+});
+
+test("staff can reopen a slot once its appointment is cancelled", async () => {
+  await request("/api/appointments/1/cancel", {
+    method: "POST",
+    headers: headers(STAFF),
+    body: "{}",
+  });
+  const { response, body } = await request("/api/slots/2", {
+    method: "PUT",
+    headers: headers(STAFF),
+    body: JSON.stringify({ status: "available" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(body.data.status, "available");
+});
+
 // ---------- Booking (patient) ----------
+
+test("patient can book an available slot", async () => {
+  const { response, body } = await request("/api/appointments", {
+    method: "POST",
+    headers: headers(PATIENT_1),
+    body: JSON.stringify({ slotId: 1, type: "online" }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(body.data.slotId, 1);
+  assert.equal(body.data.status, "booked");
+  assert.equal(body.data.type, "online");
+});
+
+test("patient cannot book an already booked slot", async () => {
+  const { response, body } = await request("/api/appointments", {
+    method: "POST",
+    headers: headers(PATIENT_1),
+    body: JSON.stringify({ slotId: 2, type: "in_person" }),
+  });
+  assert.equal(response.status, 409);
+  assert.equal(body.error, "Khung giờ đã được đặt");
+});
+
+test("concurrent booking of the same slot produces exactly one success", async () => {
+  const book = () =>
+    request("/api/appointments", {
+      method: "POST",
+      headers: headers(PATIENT_1),
+      body: JSON.stringify({ slotId: 1, type: "in_person" }),
+    });
+
+  const results = await Promise.all([book(), book()]);
+  const statuses = results.map((item) => item.response.status).sort();
+  assert.deepEqual(statuses, [201, 409]);
+});
 
 test("booking without slotId is rejected", async () => {
   const { response, body } = await request("/api/appointments", {
@@ -299,6 +407,17 @@ test("staff lists appointments and can filter by date", async () => {
   const filtered = await request(`/api/appointments?date=${tomorrow}`, { headers: headers(STAFF) });
   assert.equal(filtered.response.status, 200);
   assert.equal(filtered.body.data.length, 0); // không có lịch hẹn nào ở seed cho ngày mai
+});
+
+test("staff confirms booked appointment", async () => {
+  const { response, body } = await request("/api/appointments/1/confirm", {
+    method: "POST",
+    headers: headers(STAFF),
+    body: "{}",
+  });
+  assert.equal(response.status, 200);
+  assert.equal(body.data.id, 1);
+  assert.equal(body.data.status, "confirmed");
 });
 
 test("patient cannot confirm an appointment", async () => {
@@ -397,4 +516,20 @@ test("owner patient can cancel their own appointment", async () => {
   });
   assert.equal(response.status, 200);
   assert.equal(body.data.status, "cancelled");
+});
+
+test("cancel appointment returns its slot to available", async () => {
+  const cancel = await request("/api/appointments/1/cancel", {
+    method: "POST",
+    headers: headers(PATIENT_1),
+    body: "{}",
+  });
+  assert.equal(cancel.response.status, 200);
+  assert.equal(cancel.body.data.status, "cancelled");
+
+  const slots = await request(`/api/doctors/1/slots?date=${cancel.body.data.date}`, {
+    headers: headers(PATIENT_1),
+  });
+  assert.equal(slots.response.status, 200);
+  assert.ok(slots.body.data.some((slot) => slot.id === 2 && slot.status === "available"));
 });

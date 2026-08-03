@@ -64,8 +64,14 @@ Cần PostgreSQL ở `localhost:55432` (bật bằng `docker compose up -d db`),
 
 ```bash
 npm install
-OFFER_JOB_DISABLED=1 node tests/api.test.js        # 14/14 — regression bản gốc
-OFFER_JOB_DISABLED=1 node tests/waitlist.test.js   # 18/18 — tính năng mới (chỉ có ở day03)
+OFFER_JOB_DISABLED=1 npm test
 ```
-> Chạy **từng file** (đừng dùng `node --test tests/*.test.js` chạy song song vì hai file cùng reset một DB).
+
+`npm test` chạy `node --test --test-concurrency=1 tests/*.test.js`:
+- `tests/regression-core.test.js` — 47 test regression, chỉ bảo vệ các tính năng đã có ở `main` (auth, doctors, slots, appointments). Có ở mọi nhánh.
+- `tests/waitlist.test.js` — 18 test cho tính năng waitlist mới. Chỉ có ở nhánh `day03`.
+
+Chi tiết mục đích và phạm vi của bộ regression: [`doc/regression-testing.md`](./doc/regression-testing.md).
+
+> `--test-concurrency=1` là bắt buộc: các file test cùng dùng chung 1 database và tự reset dữ liệu trước mỗi ca, chạy song song sẽ deadlock.
 > Lưu ý: nếu source đặt trong thư mục **iCloud (Desktop)**, `require` có thể chậm — nên đặt project ở ổ thường.

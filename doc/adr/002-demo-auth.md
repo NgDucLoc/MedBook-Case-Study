@@ -124,7 +124,7 @@ Bước 4 chính là lợi ích của việc đã tách middleware ngay từ đ�
 
 ### Test bảo vệ
 
-`tests/api.test.js` có hai ca chốt lại hành vi đăng nhập:
+`tests/regression-core.test.js` có hai ca chốt lại hành vi đăng nhập:
 
 - `demo login requires a correct password` - sai mật khẩu phải nhận `401`.
 - `demo login cannot be bypassed with userId alone` - gửi `{ userId: 2 }` phải nhận `400`, không được đăng nhập.

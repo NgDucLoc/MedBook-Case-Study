@@ -4,6 +4,11 @@ Tài liệu này mô tả `tests/regression-core.test.js` — bộ test tự đ�
 tính năng **đã có sẵn ở nhánh `main`**: demo auth, danh mục bác sĩ/chuyên khoa, quản lý
 slot, đặt/hủy/xác nhận lịch hẹn.
 
+Trên `main`, đây là file test **duy nhất** trong `tests/`. Khi bạn implement tính năng
+mới trên một nhánh riêng, tests của tính năng đó nên nằm ở **file riêng** (vd. nhánh
+`day03` có thêm `tests/waitlist.test.js` cho tính năng waitlist) — không viết chung vào
+`regression-core.test.js` và không chỉnh sửa file này.
+
 ## Dùng để làm gì
 
 Khi bạn implement thêm một tính năng mới (vd. waitlist, thông báo, thanh toán...) trên

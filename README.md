@@ -180,9 +180,7 @@ Nguyên tắc: mỗi tầng chỉ gọi tầng ngay dưới nó, không nhảy c
 │   ├── index.html
 │   ├── styles.css
 │   └── js/                    state, api, ui (time rail), main, views/
-├── tests/
-│   ├── api.test.js             14 test tích hợp
-│   └── regression-core.test.js 35 test regression — bảo vệ tính năng cũ khi thêm tính năng mới
+├── tests/regression-core.test.js  47 test — bảo vệ tính năng cũ khi thêm tính năng mới
 ├── doc/                       Tài liệu kỹ thuật (xem cuối README)
 └── docker-compose.yml
 ```
@@ -290,7 +288,7 @@ Các biến môi trường (xem `.env.example`):
 
 ```bash
 npm run lint                    # ESLint
-npm test                        # 49 test (14 tích hợp + 35 regression) — CẦN database đang chạy
+npm test                        # 47 test regression — CẦN database đang chạy
 npm run db:seed -- --reset      # xóa sạch và nạp lại dữ liệu mẫu
 ```
 

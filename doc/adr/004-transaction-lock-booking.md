@@ -114,7 +114,7 @@ Càng xuống sâu càng khó vượt qua, nhưng thông báo càng xấu. Đó 
 - **Đúng chắc chắn.** Không có kịch bản nào tạo được hai lịch hẹn hoạt động trên một slot.
 - **Dễ hiểu.** Đọc `bookAppointment()` là thấy rõ trình tự: `BEGIN` → khóa → kiểm tra → ghi → `COMMIT`. Không có "phép thuật" ẩn.
 - **Không cần hạ tầng thêm.** PostgreSQL làm hết. Không Redis, không queue.
-- **Có test bảo vệ cả hai lớp đầu.** `tests/api.test.js` có:
+- **Có test bảo vệ cả hai lớp đầu.** `tests/regression-core.test.js` có:
   - *"patient cannot book an already booked slot"* - kiểm tra lớp 1.
   - *"concurrent booking of the same slot produces exactly one success"* - bắn hai request song song vào cùng slot bằng `Promise.all`, khẳng định kết quả đúng là một `201` và một `409`. Đây là ca test trực tiếp chứng minh lớp 2 hoạt động.
 - **Đúng tinh thần "ràng buộc quan trọng thì đặt ở database".** Code có thể viết sai, ràng buộc DB thì không.
