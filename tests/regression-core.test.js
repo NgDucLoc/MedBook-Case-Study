@@ -2,7 +2,8 @@
  * Regression suite — chỉ test các tính năng "cũ" đã có sẵn ở nhánh main:
  * demo auth, danh mục bác sĩ/chuyên khoa, quản lý slot, đặt/hủy/xác nhận lịch hẹn.
  *
- * KHÔNG được thêm test cho tính năng mới (waitlist/offer/notification...) vào file này.
+ * KHÔNG được thêm test cho bất kỳ tính năng mới nào vào file này — file này không được
+ * biết/giả định gì về tính năng bạn sắp thêm. Test của tính năng mới nên nằm ở file riêng.
  * Mục đích: học viên chạy `npm test` (hoặc `node --test tests/regression-core.test.js`)
  * SAU KHI implement tính năng bổ sung, để đảm bảo các luồng cũ không bị vỡ.
  */
