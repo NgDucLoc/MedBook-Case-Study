@@ -1,7 +1,7 @@
 const { getClient } = require("../db/pool");
 const appointmentRepository = require("../repositories/appointmentRepository");
 const slotRepository = require("../repositories/slotRepository");
-const offerService = require("./offerService");
+const offerEngineService = require("./offerEngineService");
 const { toInt, required } = require("../utils/validate");
 const { httpError } = require("../errors");
 
@@ -30,6 +30,14 @@ async function bookAppointment({ slotId, patientId, type }) {
     throw error;
   } finally {
     client.release();
+  }
+
+  // doc/specs/05-api-contract.md §5.2: đặt lịch trực tiếp cũng phải huỷ offer đang treo
+  // trên slot này (nếu có) — không thì offer đó "treo" tới khi hết hạn tự nhiên.
+  try {
+    await offerEngineService.onSlotTaken(normalizedSlotId);
+  } catch (hookError) {
+    console.error(`[slot-taken] hook failed slot=${normalizedSlotId} reason=${hookError.message}`);
   }
 
   return appointmentRepository.findDetailedById(appointmentId);
@@ -83,7 +91,7 @@ async function cancelAppointment({ appointmentId, user }) {
   // Lỗi của hook được nuốt lại — huỷ lịch vẫn thành công.
   if (freedSlotId != null) {
     try {
-      await offerService.onSlotAvailable(freedSlotId);
+      await offerEngineService.onSlotBecameAvailable(freedSlotId);
     } catch (hookError) {
       console.error(`[slot-available] hook failed slot=${freedSlotId} reason=${hookError.message}`);
     }

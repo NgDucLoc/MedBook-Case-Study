@@ -55,64 +55,102 @@ async function migrate() {
       where status in ('booked', 'confirmed');
 
     -- ===== Dynamic Appointment Rescheduling & Waiting List (Day 3) =====
-    create table if not exists waitlist_entries (
-      id          serial primary key,
-      patient_id  integer not null references patients(id),
-      doctor_id   integer not null references doctors(id),
-      date_from   date not null,
-      date_to     date not null,
-      status      varchar(20) not null default 'active'
-                  check (status in ('active', 'fulfilled', 'cancelled', 'expired')),
-      created_at  timestamptz not null default now(),
-      updated_at  timestamptz not null default now(),
-      check (date_from <= date_to)
+    -- Nguồn: doc/specs/04-data-model.md §4.2 (Specification Package v1.0 FROZEN · 2026-08-03)
+
+    create table if not exists waiting_list_entries (
+      id serial primary key,
+      patient_id integer not null references patients(id),
+      doctor_id integer references doctors(id),
+      specialization_id integer references specializations(id),
+      medical_priority varchar(10) not null default 'normal'
+        check (medical_priority in ('urgent','high','normal')),
+      preferred_type varchar(20) not null default 'in_person'
+        check (preferred_type in ('in_person','online')),
+      status varchar(20) not null default 'waiting'
+        check (status in ('waiting','offered','fulfilled','cancelled')),
+      desired_from date,
+      desired_to date,
+      note varchar(255),
+      created_by_user_id integer references users(id),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      check (doctor_id is not null or specialization_id is not null),
+      check (desired_to is null or desired_from is null or desired_to >= desired_from)
     );
-
-    -- BR-06: mỗi bệnh nhân chỉ có 1 entry đang hoạt động cho mỗi bác sĩ
-    create unique index if not exists one_active_waitlist_per_patient_doctor
-      on waitlist_entries(patient_id, doctor_id) where status = 'active';
-
-    -- BR-01: phục vụ truy vấn chọn bệnh nhân theo FIFO
-    create index if not exists idx_waitlist_doctor_active
-      on waitlist_entries(doctor_id, status, created_at);
 
     create table if not exists appointment_offers (
-      id                serial primary key,
-      slot_id           integer not null references slots(id),
-      waitlist_entry_id integer not null references waitlist_entries(id),
-      patient_id        integer not null references patients(id),
-      status            varchar(20) not null default 'pending'
-                        check (status in ('pending', 'accepted', 'declined', 'expired', 'superseded')),
-      expires_at        timestamptz,
-      notified_at       timestamptz,
-      responded_at      timestamptz,
-      created_at        timestamptz not null default now()
+      id serial primary key,
+      waiting_list_entry_id integer not null references waiting_list_entries(id),
+      patient_id integer not null references patients(id),
+      slot_id integer not null references slots(id),
+      appointment_type varchar(20) not null default 'in_person'
+        check (appointment_type in ('in_person','online')),
+      status varchar(20) not null default 'sent'
+        check (status in ('sent','accepted','declined','expired','cancelled')),
+      sent_at timestamptz not null default now(),
+      expires_at timestamptz not null,
+      responded_at timestamptz,
+      appointment_id integer references appointments(id),
+      cancel_reason varchar(50),
+      decline_reason varchar(255),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      check (expires_at > sent_at),
+      check ((status = 'accepted') = (appointment_id is not null))
     );
 
-    -- BR-06: tối đa 1 offer pending cho mỗi slot và cho mỗi bệnh nhân
+    create table if not exists offer_events (
+      id bigserial primary key,
+      occurred_at timestamptz not null default now(),
+      event_type varchar(30) not null check (event_type in (
+        'offer_sent','offer_accepted','offer_declined','offer_expired','offer_cancelled',
+        'no_candidate','entry_created','entry_cancelled','entry_fulfilled')),
+      offer_id integer references appointment_offers(id),
+      waiting_list_entry_id integer references waiting_list_entries(id),
+      slot_id integer references slots(id),
+      patient_id integer references patients(id),
+      from_status varchar(20),
+      to_status varchar(20),
+      actor varchar(10) not null default 'system'
+        check (actor in ('patient','staff','system')),
+      actor_user_id integer references users(id),
+      reason varchar(100)
+    );
+
+    -- AC-01.5: một bệnh nhân chỉ có một entry đang hoạt động cho mỗi tiêu chí
+    create unique index if not exists uniq_active_entry_per_patient_target
+      on waiting_list_entries(patient_id, coalesce(doctor_id, 0), coalesce(specialization_id, 0))
+      where status in ('waiting','offered');
+
+    -- Phục vụ truy vấn chọn ứng viên (BR-02 + BR-03)
+    create index if not exists idx_wle_selection
+      on waiting_list_entries(status, medical_priority, created_at);
+    create index if not exists idx_wle_patient
+      on waiting_list_entries(patient_id);
+
+    -- BR-04: hai partial unique index BẮT BUỘC
     create unique index if not exists one_pending_offer_per_slot
-      on appointment_offers(slot_id) where status = 'pending';
+      on appointment_offers(slot_id) where status = 'sent';
     create unique index if not exists one_pending_offer_per_patient
-      on appointment_offers(patient_id) where status = 'pending';
+      on appointment_offers(patient_id) where status = 'sent';
 
-    -- BR-02: phục vụ job quét offer hết hạn
-    create index if not exists idx_offers_pending_expiry
-      on appointment_offers(status, expires_at);
+    -- Phục vụ sweeper (AC-06.1)
+    create index if not exists idx_offers_expiry
+      on appointment_offers(expires_at) where status = 'sent';
 
-    -- BR-05: Notification là bảng MỚI, MedBook chưa có
-    create table if not exists notifications (
-      id                serial primary key,
-      recipient_user_id integer not null references users(id),
-      type              varchar(40) not null,
-      title             varchar(200) not null,
-      body              text,
-      ref_offer_id      integer references appointment_offers(id),
-      read_at           timestamptz,
-      created_at        timestamptz not null default now()
-    );
-    create index if not exists idx_notifications_recipient
-      on notifications(recipient_user_id, created_at desc);
+    -- Phục vụ BR-03f: không mời lại người đã từ chối chính slot đó
+    create index if not exists idx_offers_entry_slot
+      on appointment_offers(waiting_list_entry_id, slot_id, status);
 
+    create index if not exists idx_events_slot
+      on offer_events(slot_id, occurred_at);
+    create index if not exists idx_events_patient
+      on offer_events(patient_id, occurred_at);
+
+    -- Đính chính 1 (doc/specs/01-context-scope.md §1.2): MedBook KHÔNG có Notification
+    -- Service. Bảng notifications của bản nháp trước bị cấm tuyệt đối — dọn khỏi các
+    -- DB dev đã chạy bản cũ. Không đụng 6 bảng gốc (C4).
+    drop table if exists notifications cascade;
   `);
 }
 

@@ -5,9 +5,9 @@ Bộ file này đi kèm **`WB-3.docx`**. Học viên làm theo workbook, mỗi b
 ## Đầu vào (input)
 | File | Nội dung |
 |---|---|
-| [`spec/waitlist-feature.md`](spec/waitlist-feature.md) | **AI-Ready Specification Package** — kết quả Day 2 (Requirement + Architecture + Design). Đây là input đầu vào cho toàn bộ Day 3. Đọc file này trước khi bắt đầu. |
+| [`../../../doc/specs/README.md`](../../../doc/specs/README.md) | **AI-Ready Specification Package** — kết quả Day 2 (Requirement + Architecture + Design), phiên bản 1.0 FROZEN · 2026-08-03, gồm 9 file (`01-context-scope.md` … `09-handoff-checklist.md`) + mục lục. Đây là input đầu vào cho toàn bộ Day 3. Đọc `README.md` trước để nắm thứ tự đọc, sau đó đọc `01` → `09`. |
 
-> Trong quá trình coding ở Bước 3, học viên đặt bản spec này vào repo tại `doc/specs/waitlist-feature.md` rồi prompt: *"Đọc doc/specs/waitlist-feature.md và implement theo mục 6"*.
+> Trong quá trình coding ở Bước 3, học viên dùng đúng bộ 9 file đã có sẵn tại `doc/specs/` trong repo (giữ nguyên tên file) rồi prompt: *"Đọc doc/specs/06-component-file-mapping-convention.md và implement theo mục 6. Khi cần chi tiết luật nghiệp vụ, acceptance criteria, data model hay API contract, tham chiếu các file 02/03/04/05 trong cùng thư mục."*
 
 ## Activity 1 — AI-Assisted Development
 | Bước (WB) | Template | Output |
@@ -33,7 +33,7 @@ Bộ file này đi kèm **`WB-3.docx`**. Học viên làm theo workbook, mỗi b
 > Bước 2 và Bước 3 chủ yếu sinh ra **test source code** (theo công nghệ của hệ thống) và execution guide; nhóm lưu chúng cạnh code test hoặc trong thư mục `tests/`. Kết quả thực thi được tổng hợp lại ở `defect-report.md` và `release-report.md`.
 
 ## Cách dùng nhanh
-1. Đọc `spec/waitlist-feature.md`.
+1. Đọc `../../../doc/specs/README.md` rồi lần lượt `01-context-scope.md` → `09-handoff-checklist.md`.
 2. Làm tuần tự Activity 1 (Bước 0 → 6), điền dần các template ở `activity1-development/`.
 3. Bàn giao sang Activity 2 (Bước 1 → 4), điền các template ở `activity2-qa/`.
 4. Chuẩn bị slide 5 phút cho mỗi Activity theo mục **Deliverables** trong WB-3.docx.

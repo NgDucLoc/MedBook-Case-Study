@@ -1,12 +1,17 @@
 const { query, pool } = require("../db/pool");
 
-async function create(client, { slotId, waitlistEntryId, patientId }) {
+// BR-05: expires_at = min(now() + timeout, giờ bắt đầu slot). Tính ngay trong INSERT để
+// không phải đọc slot riêng (slotRepository.findForUpdate chỉ trả id/status — KHÔNG SỬA).
+async function create(client, { waitingListEntryId, patientId, slotId, appointmentType, timeoutMinutes }) {
   const runner = client || pool;
   const result = await runner.query(
-    `insert into appointment_offers (slot_id, waitlist_entry_id, patient_id, status)
-     values ($1, $2, $3, 'pending')
+    `insert into appointment_offers
+       (waiting_list_entry_id, patient_id, slot_id, appointment_type, status, expires_at)
+     select $1, $2, $3, $4, 'sent',
+       least(now() + ($5 || ' minutes')::interval, (s.date + s.start_time)::timestamptz)
+     from slots s where s.id = $3
      returning *`,
-    [slotId, waitlistEntryId, patientId],
+    [waitingListEntryId, patientId, slotId, appointmentType, timeoutMinutes],
   );
   return result.rows[0];
 }
@@ -24,105 +29,154 @@ async function findByIdForUpdate(client, id) {
   return result.rows[0] || null;
 }
 
-async function findPendingByWaitlistEntry(waitlistEntryId) {
+async function findPendingByWaitingListEntry(waitingListEntryId) {
   const rows = await query(
-    "select * from appointment_offers where waitlist_entry_id = $1 and status = 'pending'",
-    [waitlistEntryId],
+    "select * from appointment_offers where waiting_list_entry_id = $1 and status = 'sent'",
+    [waitingListEntryId],
   );
   return rows[0] || null;
 }
 
-// BR-05: chỉ đặt notified_at + expires_at SAU khi thông báo thành công.
-async function markNotified(id, timeoutMinutes) {
+async function findPendingBySlot(slotId) {
   const rows = await query(
-    `update appointment_offers
-       set notified_at = now(),
-           expires_at = now() + make_interval(mins => $2)
-     where id = $1 and status = 'pending'
-     returning *`,
-    [id, timeoutMinutes],
+    "select * from appointment_offers where slot_id = $1 and status = 'sent'",
+    [slotId],
   );
   return rows[0] || null;
 }
 
-// NFR-04 / BR-03 L1: cập nhật trạng thái nguyên tử, chỉ khi đang 'pending'.
-async function updateStatusIfPending(client, id, status) {
-  const responded = status === "accepted" || status === "declined" ? ", responded_at = now()" : "";
+// doc/specs/04-data-model.md §4.4 — mẫu chung cho declined / expired / cancelled.
+// KHÔNG dùng mẫu này cho 'accepted' (thiếu appointment_id sẽ vi phạm CHECK constraint).
+async function transitionIfSent(client, id, status, { cancelReason, declineReason } = {}) {
   const runner = client || pool;
   const result = await runner.query(
-    `update appointment_offers set status = $2${responded}
-     where id = $1 and status = 'pending'
+    `update appointment_offers
+     set status = $2, responded_at = now(), updated_at = now(),
+         cancel_reason = coalesce($3, cancel_reason),
+         decline_reason = coalesce($4, decline_reason)
+     where id = $1 and status = 'sent'
      returning *`,
-    [id, status],
+    [id, status, cancelReason || null, declineReason || null],
   );
   return result.rows[0] || null;
 }
 
-// BR-02: offer pending đã quá hạn (đã notify).
+// §4.4 — mẫu riêng cho 'accepted': appointment_id trong CÙNG câu lệnh + and expires_at > now().
+async function acceptIfSentAndNotExpired(client, id, appointmentId) {
+  const result = await client.query(
+    `update appointment_offers
+     set status = 'accepted', appointment_id = $2, responded_at = now(), updated_at = now()
+     where id = $1 and status = 'sent' and expires_at > now()
+     returning *`,
+    [id, appointmentId],
+  );
+  return result.rows[0] || null;
+}
+
+// Phục vụ sweeper (BR-05/BR-06, AC-06.1).
 async function findExpired() {
   return query(
     `select * from appointment_offers
-     where status = 'pending' and expires_at is not null and expires_at <= now()
+     where status = 'sent' and expires_at <= now()
      order by expires_at asc`,
   );
 }
 
-function offerDetailSelect(where) {
+// BR-08: KHÔNG SELECT * cho endpoint của bệnh nhân — liệt kê cột tường minh, không lộ
+// medicalPriority/note/thông tin bệnh nhân khác.
+function myOffersSelect(where) {
   return `
     select
       o.id,
-      o.patient_id as "patientId",
-      p.name as "patientName",
+      o.slot_id as "slotId",
+      d.name as "doctorName",
+      d.title as "doctorTitle",
+      sp.name as specialization,
+      d.room,
+      to_char(s.date, 'YYYY-MM-DD') as date,
+      to_char(s.start_time, 'HH24:MI') as "startTime",
+      to_char(s.end_time, 'HH24:MI') as "endTime",
+      o.appointment_type as "appointmentType",
       o.status,
       to_char(o.expires_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') as "expiresAt",
-      greatest(0, floor(extract(epoch from (o.expires_at - now()))))::int as "secondsRemaining",
-      to_char(o.created_at, 'YYYY-MM-DD HH24:MI') as "createdAt",
-      json_build_object(
-        'id', s.id,
-        'doctorName', d.name,
-        'date', to_char(s.date, 'YYYY-MM-DD'),
-        'startTime', to_char(s.start_time, 'HH24:MI'),
-        'endTime', to_char(s.end_time, 'HH24:MI')
-      ) as slot
+      greatest(0, floor(extract(epoch from (o.expires_at - now()))))::int as "remainingSeconds"
     from appointment_offers o
-    join patients p on p.id = o.patient_id
     join slots s on s.id = o.slot_id
     join doctors d on d.id = s.doctor_id
+    join specializations sp on sp.id = d.specialization_id
     ${where}
   `;
 }
 
-async function listPendingByPatientDetailed(patientId) {
+async function listMyOffers(patientId, { includeHistory } = {}) {
+  const statusFilter = includeHistory
+    ? "(o.status = 'sent' or (o.status != 'sent' and o.responded_at >= now() - interval '7 days'))"
+    : "o.status = 'sent'";
   return query(
-    offerDetailSelect("where o.patient_id = $1 and o.status = 'pending'") +
-      " order by o.created_at desc",
+    myOffersSelect(`where o.patient_id = $1 and ${statusFilter}`) + " order by o.sent_at desc",
     [patientId],
   );
 }
 
-async function listForStaffDetailed({ status, doctorId } = {}) {
+function staffOffersSelect(where) {
+  return `
+    select
+      o.id,
+      o.waiting_list_entry_id as "waitingListEntryId",
+      o.patient_id as "patientId",
+      p.name as "patientName",
+      p.phone as "patientPhone",
+      o.slot_id as "slotId",
+      d.name as "doctorName",
+      sp.name as specialization,
+      d.room,
+      to_char(s.date, 'YYYY-MM-DD') as date,
+      to_char(s.start_time, 'HH24:MI') as "startTime",
+      to_char(s.end_time, 'HH24:MI') as "endTime",
+      o.appointment_type as "appointmentType",
+      o.status,
+      to_char(o.sent_at, 'YYYY-MM-DD HH24:MI') as "sentAt",
+      to_char(o.expires_at, 'YYYY-MM-DD"T"HH24:MI:SSOF') as "expiresAt",
+      to_char(o.responded_at, 'YYYY-MM-DD HH24:MI') as "respondedAt",
+      o.cancel_reason as "cancelReason",
+      o.decline_reason as "declineReason"
+    from appointment_offers o
+    join patients p on p.id = o.patient_id
+    join slots s on s.id = o.slot_id
+    join doctors d on d.id = s.doctor_id
+    join specializations sp on sp.id = d.specialization_id
+    ${where}
+  `;
+}
+
+async function listForStaff({ slotId, patientId, status } = {}) {
   const params = [];
   const filters = [];
+  if (slotId) {
+    params.push(slotId);
+    filters.push(`o.slot_id = $${params.length}`);
+  }
+  if (patientId) {
+    params.push(patientId);
+    filters.push(`o.patient_id = $${params.length}`);
+  }
   if (status) {
     params.push(status);
     filters.push(`o.status = $${params.length}`);
   }
-  if (doctorId) {
-    params.push(doctorId);
-    filters.push(`s.doctor_id = $${params.length}`);
-  }
   const where = filters.length ? `where ${filters.join(" and ")}` : "";
-  return query(offerDetailSelect(where) + " order by o.created_at desc", params);
+  return query(staffOffersSelect(where) + " order by o.sent_at desc", params);
 }
 
 module.exports = {
   create,
   findById,
   findByIdForUpdate,
-  findPendingByWaitlistEntry,
-  markNotified,
-  updateStatusIfPending,
+  findPendingByWaitingListEntry,
+  findPendingBySlot,
+  transitionIfSent,
+  acceptIfSentAndNotExpired,
   findExpired,
-  listPendingByPatientDetailed,
-  listForStaffDetailed,
+  listMyOffers,
+  listForStaff,
 };

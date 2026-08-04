@@ -1,6 +1,6 @@
 const slotRepository = require("../repositories/slotRepository");
 const appointmentRepository = require("../repositories/appointmentRepository");
-const offerService = require("./offerService");
+const offerEngineService = require("./offerEngineService");
 const { toInt, required } = require("../utils/validate");
 const { httpError } = require("../errors");
 
@@ -50,10 +50,17 @@ async function updateSlot({ id, startTime, endTime, status }) {
   });
   if (!updated) throw httpError(404, "Không tìm thấy khung giờ");
 
-  // BR-07 nguồn 2: staff chuyển slot booked -> available thì chào bệnh nhân đang chờ.
-  if (before.status === "booked" && updated.status === "available") {
+  if (before.status === "available" && updated.status === "booked") {
+    // BR-07 nguồn 2: staff chặn giờ trong lúc có offer đang treo -> huỷ offer đó.
     try {
-      await offerService.onSlotAvailable(slotId);
+      await offerEngineService.onSlotTaken(slotId);
+    } catch (hookError) {
+      console.error(`[slot-taken] hook failed slot=${slotId} reason=${hookError.message}`);
+    }
+  } else if (before.status === "booked" && updated.status === "available") {
+    // BR-01 nguồn 2: staff mở lại slot booked -> available thì chào bệnh nhân đang chờ.
+    try {
+      await offerEngineService.onSlotBecameAvailable(slotId);
     } catch (hookError) {
       console.error(`[slot-available] hook failed slot=${slotId} reason=${hookError.message}`);
     }
