@@ -15,6 +15,3 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
-
-# Đáp án workbook — không commit
-Workbook/DapAn/
