@@ -13,7 +13,7 @@ Ràng buộc của dự án:
 1. **`docker compose up` phải ra ngay app dùng được.** Người xem demo không nên phải gõ thêm lệnh nào.
 2. **Phải có sẵn dữ liệu để bấm.** Màn hình trống trơn thì không demo được gì.
 3. **Container có thể khởi động lại nhiều lần.** Docker restart, CI chạy lại, người dùng `Ctrl+C` rồi `up` lại - lần nào cũng phải chạy được.
-4. **Test cần dữ liệu sạch trước mỗi ca.** `tests/api.test.js` gọi `migrateAndSeed({ reset: true })` ở `beforeEach`.
+4. **Test cần dữ liệu sạch trước mỗi ca.** `tests/regression-core.test.js` gọi `migrateAndSeed({ reset: true })` ở `beforeEach`.
 
 ## Các phương án đã cân nhắc
 
